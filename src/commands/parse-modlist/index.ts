@@ -96,8 +96,11 @@ export default function run(args: Args) {
 							})
 					});
 					queries.push(a);
-
-					await new Promise<void>((ok)=>setTimeout(()=>ok(),60_000))
+					if(chunk_count > 1) {
+						log(LogType.INFO, ['Ratelimit: wating 1min'])
+						await new Promise<void>((ok)=>setTimeout(()=>ok(),60_000))
+					}
+				
 				}
 
 				const modrinthQueries = queries.flat();
