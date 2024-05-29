@@ -60,32 +60,47 @@ export default function run(args: Args) {
 			message: ' Do you want to proceed?',
 			type: 'confirm',
 			initial: false,
-		}).then((answer) => {
+		}).then(async (answer) => {
 			if (answer.verifyContinue) {
 				const modrinthSearchProgressBar = new ProgressBar(
 					'[:bar|:percent :current/:total]',
 					mods.length
 				)
 
-				const modrinthQueries = mods.map((mod) => {
-					return axios
-						.get<
-							operations['searchProjects']['responses']['200']['content']['application/json']
-						>('https://api.modrinth.com/v2/search', {
-							params: {
-								query: mod.name,
-							},
-							headers: {
-								'x-query-name': Buffer.from(mod.name).toString('base64'),
-								'x-query-author': mod.author,
-								'x-query-curseforge-url': mod.curseUrl || '',
-							},
-						})
-						.then((data) => {
-							modrinthSearchProgressBar.tick()
-							return data
-						})
-				})
+				const chunk_count = Math.ceil(mods.length / 300)
+				let chunks = [];
+				
+				for(let i = 0; i < chunk_count; i++){
+					chunks.push(mods.slice(300*i,300 * (i+1)));
+				}
+
+				let queries = [];
+				for(const chunk of chunks){
+					const a = chunk.map((mod) => {
+						return axios
+							.get<
+								operations['searchProjects']['responses']['200']['content']['application/json']
+							>('https://api.modrinth.com/v2/search', {
+								params: {
+									query: mod.name,
+								},
+								headers: {
+									'x-query-name': Buffer.from(mod.name).toString('base64'),
+									'x-query-author': mod.author,
+									'x-query-curseforge-url': mod.curseUrl || '',
+								},
+							})
+							.then((data) => {
+								modrinthSearchProgressBar.tick()
+								return data
+							})
+					});
+					queries.push(a);
+
+					await new Promise<void>((ok)=>setTimeout(()=>ok(),60_000))
+				}
+
+				const modrinthQueries = queries.flat();
 
 				Promise.all(modrinthQueries).then((queries) => {
 					const availableOnModrinth: string[] = []
@@ -97,7 +112,7 @@ export default function run(args: Args) {
 
 					queries.forEach((query) => {
 						if (query.data.total_hits > 0) {
-							availableOnModrinth.push(query.data.hits[0].title || '')
+							availableOnModrinth.push(`${query.data.hits[0].title} (${query.data.hits[0].slug})` || '')
 						} else {
 							unavailableOnModrinth.push({
 								name: Buffer.from(
@@ -129,7 +144,7 @@ export default function run(args: Args) {
 							`${mod.name} by ${mod.author} (${mod.curseUrl})`,
 						])
 					})
-				})
+				});
 			} else {
 				process.exit(0)
 			}
