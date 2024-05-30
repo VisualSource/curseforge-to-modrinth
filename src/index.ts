@@ -7,6 +7,7 @@ import {
 	default as runParseModlist,
 	module as parseModlistModule,
 } from './commands/parse-modlist/index.js'
+import { default as runCurseModule, module as parseCurseModule, Args as parseCurseArgs } from './commands/fetch-curse.js';
 import { log, LogType } from './util/log.js'
 
 let command: Commands = Commands.NONE
@@ -33,6 +34,7 @@ export const argv = yargs(hideBin(process.argv))
 	.usage('$0 <cmd> [args]')
 	.help()
 	.alias('h', 'help')
+	.command<parseCurseArgs>("run", "parse CurseForge mod", parseCurseModule)
 	.command<parseModlistArgs>(
 		'parse',
 		'Parse a CurseForge modlist and returns both Modrinth URLS and mods not on Modrinth',
@@ -48,6 +50,8 @@ export const argv = yargs(hideBin(process.argv))
 
 if (command.valueOf() == Commands.PARSE_MODLIST.valueOf()) {
 	runParseModlist(commandArgs as parseModlistArgs)
+} else if (command.valueOf() === Commands.PARSE_CURSE.valueOf()) {
+	runCurseModule(commandArgs as parseCurseArgs);
 } else {
 	log(LogType.ERROR, ['No command provided (or command is invalid).'])
 	exit(0)
