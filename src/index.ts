@@ -1,13 +1,13 @@
 import { exit } from 'process'
 import yargs from 'yargs'
 import { hideBin } from 'yargs/helpers'
-import { Commands } from './commands'
+import { Commands } from './commands/index.js'
 import {
 	Args as parseModlistArgs,
 	default as runParseModlist,
 	module as parseModlistModule,
-} from './commands/parse-modlist'
-import { log, LogType } from './util/log'
+} from './commands/parse-modlist/index.js'
+import { log, LogType } from './util/log.js'
 
 let command: Commands = Commands.NONE
 let commandArgs: parseModlistArgs = { path: '' }
@@ -34,7 +34,7 @@ export const argv = yargs(hideBin(process.argv))
 	.help()
 	.alias('h', 'help')
 	.command<parseModlistArgs>(
-		'parse-modlist',
+		'parse',
 		'Parse a CurseForge modlist and returns both Modrinth URLS and mods not on Modrinth',
 		parseModlistModule
 	)
