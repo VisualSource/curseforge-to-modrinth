@@ -94,15 +94,23 @@ export default function run(args: Args) {
 								return data
 							}).then(async (query)=>{
 								if(query.data.total_hits <= 0) {
+									console.log({
+										name: Buffer.from(
+											query.request.getHeader('x-query-name'),
+											'base64'
+										).toString('utf8'),
+										author: query.request.getHeader('x-query-author'),
+										curseUrl: query.request.getHeader('x-query-curseforge-url'),
+									})
 									return null;
 								}
-								const data = await axios.get<operations["getProjectVersions"]["responses"]["200"]["content"]["application/json"]>(`https://api.modrinth.com/v2/project/${query.data.hits[0].project_id}/version`,{
-									params: {
-										loaders: ["forge"],
-										game_versions: ["1.20.1"],
-										featured: true
-									}
-								});
+						
+								const data = await axios.get<operations["getProjectVersions"]["responses"]["200"]["content"]["application/json"]>(`https://api.modrinth.com/v2/project/${query.data.hits[0].project_id}/version${query.data.hits[0].project_type === "mod" ? `?loaders=["forge"]&game_versions=["1.20.1","1.20"]`:""}`);
+
+								if(!data.data[0]?.files) {
+									console.info("Getting", query.data.hits[0].title,query.data.hits[0].project_id);
+									return null;
+								}
 
 								return {
 									type: query.data.hits[0].project_type,
