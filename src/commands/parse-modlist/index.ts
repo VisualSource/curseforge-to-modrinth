@@ -67,11 +67,11 @@ export default function run(args: Args) {
 					mods.length
 				)
 
-				const chunk_count = Math.ceil(mods.length / 300)
+				const chunk_count = Math.ceil(mods.length / 150)
 				let chunks = [];
 				
 				for(let i = 0; i < chunk_count; i++){
-					chunks.push(mods.slice(300*i,300 * (i+1)));
+					chunks.push(mods.slice(150*i,150 * (i+1)));
 				}
 
 				let queries = [];
@@ -89,11 +89,26 @@ export default function run(args: Args) {
 									'x-query-author': mod.author,
 									'x-query-curseforge-url': mod.curseUrl || '',
 								},
-							})
-							.then((data) => {
+							}).then((data) => {
 								modrinthSearchProgressBar.tick()
 								return data
-							})
+							}).then(async (query)=>{
+								if(query.data.total_hits <= 0) {
+									return null;
+								}
+								const data = await axios.get<operations["getProjectVersions"]["responses"]["200"]["content"]["application/json"]>(`https://api.modrinth.com/v2/project/${query.data.hits[0].project_id}/version`,{
+									params: {
+										loaders: ["forge"],
+										game_versions: ["1.20.1"],
+										featured: true
+									}
+								});
+
+								return {
+									type: query.data.hits[0].project_type,
+									target: data.data[0].files.find(e=>e.primary) ?? data.data[0].files.at(0)
+								}
+							});
 					});
 					queries.push(a);
 					if(chunk_count > 1) {
@@ -103,9 +118,43 @@ export default function run(args: Args) {
 				
 				}
 
-				const modrinthQueries = queries.flat();
+				const modrinthQueries = await Promise.all(queries.flat());
+				const files = modrinthQueries.filter(Boolean).map((resource)=>{
 
-				Promise.all(modrinthQueries).then((queries) => {
+					return {
+						path: `${resource?.type === "mod" ? "mods": "resourcepacks"}/${resource?.target?.filename}`,
+						hashes: resource?.target?.hashes,
+						env: {
+							"client": "required",
+							"server": "unsupported"
+						},
+						downloads: [
+							resource?.target?.url
+						],
+						fileSize: resource?.target?.size
+					}
+				});
+
+				
+				const mrpack = {
+					dependencies: {
+						minecraft: "1.20.1",
+						forge: "47.2.20"
+					},
+					files,
+					name: "All the Mods 9",
+					versionId: "0.2.60",
+					game: "minecraft",
+					formatVersion: 1
+				}
+
+				fs.writeFile("./modrinth.index.json",JSON.stringify(mrpack),{ encoding: "utf-8" },(err)=>{
+					if(err){
+						console.error(err);
+					}
+				})
+
+			    /*await Promise.all(modrinthQueries).then((queries) => {
 					const availableOnModrinth: string[] = []
 					const unavailableOnModrinth: {
 						name: string
@@ -146,8 +195,13 @@ export default function run(args: Args) {
 							'❌',
 							`${mod.name} by ${mod.author} (${mod.curseUrl})`,
 						])
-					})
-				});
+					});
+				});*/
+
+
+
+
+
 			} else {
 				process.exit(0)
 			}
