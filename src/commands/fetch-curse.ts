@@ -45,7 +45,7 @@ export default async function run(args: Args) {
     const emitter = new EventEmitter();
     const em = new EventEmitter();
     const fileData = fs.readFileSync(modListPath, { "encoding": "utf-8" });
-    const data = JSON.parse(fileData) as { files: { _comment: string, path: string, hashes: { sha1: string }, downloads: string[], }[] };
+    const data = JSON.parse(fileData) as { files: { _comment: string, fileSize: number, path: string, hashes: { sha1: string }, downloads: string[], }[] };
 
     const browser = await puppeteer.launch({ headless: false });
     const page = await browser.newPage();
@@ -63,9 +63,9 @@ export default async function run(args: Args) {
     await page.setRequestInterception(true);
     client.on("Browser.downloadProgress", (e) => {
         if (e.state === "completed") {
-            em.emit("download", "ok");
+            em.emit("download", { status: "ok", bytes: e.totalBytes });
         } else if (e.state === "canceled") {
-            em.emit("download", "error");
+            em.emit("download", { status: "error", bytes: 0 });
         }
     });
     page.on("request", (req) => {
@@ -100,13 +100,13 @@ export default async function run(args: Args) {
                 download_btn?.click()
             ]);
 
-            const [url] = await Promise.all([
+            const [url, bytes] = await Promise.all([
                 new Promise<string>((ok) => {
                     emitter.once("url", e => ok(e))
                 }),
-                new Promise<void>((ok, rej) => em.once("download", (ev) => {
-                    if (ev === "ok") {
-                        ok();
+                new Promise<number>((ok, rej) => em.once("download", (ev) => {
+                    if (ev.status === "ok") {
+                        ok(ev.bytes);
                     } else if (ev === "error") {
                         rej("Download was cancelled");
                     }
@@ -116,10 +116,10 @@ export default async function run(args: Args) {
             const filename = path.parse(url).base;
             const download_file = path.join(download_dir, filename);
 
-
             data.files[index].hashes.sha1 = await getFileHash(decodeURIComponent(download_file));
             data.files[index].path = `mods/${filename}`;
             data.files[index].downloads.push(url);
+            data.files[index].fileSize = bytes;
             fs.writeFileSync(modListPath, JSON.stringify(data, undefined, 2), { encoding: "utf-8" });
 
             await new Promise<void>((ok, err) => {
@@ -130,8 +130,6 @@ export default async function run(args: Args) {
                     ok();
                 })
             });
-
-
 
         } catch (error) {
             progressBar.interrupt(chalk.red((error as Error).message));

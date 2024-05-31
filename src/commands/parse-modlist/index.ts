@@ -6,11 +6,11 @@ import chalk from 'chalk'
 import path from 'path'
 import fs from 'fs'
 
-import { getProjectVersions, getProject, searchProjects } from "../../api/modrinth/services.gen.js"
+import { getProjectVersions, searchProjects } from "../../api/modrinth/services.gen.js"
+import type { Version, VersionFile } from '../../api/modrinth/types.gen.js'
 import { setCommand, setCommandArgs } from "../../index.js";
 import { log, LogType } from '../../util/log.js';
 import { Commands } from '../index.js';
-import { ProjectResult, Version, VersionFile } from '../../api/modrinth/types.gen.js'
 
 const chunk_requests = async <T, R>(list: T[], action: (item: T) => Promise<R>, chunk_size: number) => {
 	const progressBar = new ProgressBar(
@@ -38,6 +38,7 @@ const chunk_requests = async <T, R>(list: T[], action: (item: T) => Promise<R>, 
 		}
 		queris.push(output);
 		if (chunk_count > 1 && chunk != (chunk_count - 1)) {
+			progressBar.interrupt("Ratelimit");
 			await new Promise<void>((ok) => setTimeout(() => ok(), 60_000))
 		}
 	}
@@ -121,6 +122,9 @@ export default function run(args: Args) {
 			const data = await chunk_requests(mods, async (item) => {
 				const searchResult = await searchProjects({
 					query: item.name,
+					facets: JSON.stringify([
+						["project_type:mod", "project_type:resourcepack", "project_type:shader", "project_type:datapack"]
+					])
 				});
 
 				return {
@@ -152,30 +156,30 @@ export default function run(args: Args) {
 				}
 				const project = item.search.hits.find(e => e.project_id === selected.project);
 
-				found_projects.push(project!);
+				found_projects.push({ curse: item.curse_metadata, modrinth: project! });
 			}
 
 			const version_data = await chunk_requests(found_projects, async (item) => {
 
-				let gameVersions = item.project_type === "mod" ? JSON.stringify(JSON.stringify(["1.20.1", "1.20"])) : undefined;
-				let loaders = item.project_type === "mod" ? JSON.stringify(["forge"]) : undefined
+				let gameVersions = item.modrinth.project_type === "mod" ? JSON.stringify([args.gameVersion]) : undefined;
+				let loaders = item.modrinth.project_type === "mod" ? JSON.stringify([args.loader]) : undefined;
 
-				const project_versions = await getProjectVersions({ idSlug: item.project_id, gameVersions, loaders });
+				const project_versions = await getProjectVersions({ idSlug: item.modrinth.project_id, gameVersions, loaders });
 
 				const version = project_versions.at(0);
 				const file = version?.files.find(e => e.primary) ?? version?.files.at(0);
 
 				if (!file) {
-					const items = await getProjectVersions({ idSlug: item.project_id });
+					const items = await getProjectVersions({ idSlug: item.modrinth.project_id });
 
 					const choices = items.map(e => ({
-						title: `Game: ${e.game_versions?.toReversed().slice(0, 10).join(", ")} | Loaders: ${e.game_versions?.join(", ")}`,
+						title: `Game: ${e.game_versions?.toReversed().slice(0, 10).join(", ")} | Loaders: ${e.loaders?.join(", ")}`,
 						value: e
 					}));
 
 					const versions = await prompts({
 						name: "version",
-						message: `No valid Version found: Select Version for ${item.title}`,
+						message: `No valid Version found: Select Version for ${item.modrinth.title}`,
 						type: "select",
 						choices: ([{ title: "None", value: null }] as { title: string, value: null | Version }[]).concat(choices)
 					});
@@ -198,16 +202,15 @@ export default function run(args: Args) {
 					});
 
 					if (files.file === null) {
-						not_found.push(item);
+						not_found.push(item.curse);
 						return null;
 					}
 
-					return { file: files.file as VersionFile, type: item.project_type }
+					return { file: files.file as VersionFile, type: item.modrinth.project_type }
 				}
 
-				return { file, type: item.project_type }
+				return { file, type: item.modrinth.project_type }
 			}, 300);
-
 
 			const files = version_data.filter(Boolean).map((resource) => {
 
@@ -234,7 +237,7 @@ export default function run(args: Args) {
 
 			for (const n of not_found) {
 				files.push({
-					_comment: "curseUrl" in n ? n.curseUrl : `https://modrinth.com/${(n as ProjectResult).project_type}/${(n as ProjectResult).slug}`,
+					_comment: n.curseUrl,
 					path: "",
 					hashes: {
 						sha1: "",
@@ -250,12 +253,12 @@ export default function run(args: Args) {
 			}
 			const mrpack = {
 				dependencies: {
-					minecraft: "1.20.1",
-					forge: "47.2.20"
+					minecraft: args.gameVersion,
+					[args.loader]: ""
 				},
 				files,
-				name: "All the Mods 9",
-				versionId: "0.2.60",
+				name: "",
+				versionId: "",
 				game: "minecraft",
 				formatVersion: 1
 			}
@@ -336,6 +339,14 @@ export const builder: CommandBuilder<Args> = {
 		string: true,
 		demandOption: 'Usage: curseforge-to-modrinth parse-modlist --path <path>',
 	},
+	loader: {
+		string: true,
+		demandOption: "The modloader to target"
+	},
+	gameVersion: {
+		string: true,
+		demandOption: "The version of minecraft to target"
+	}
 }
 
 export const module: CommandModule<{}, Args> = {
@@ -348,5 +359,7 @@ export const module: CommandModule<{}, Args> = {
 }
 
 export interface Args {
-	path: string
+	path: string,
+	gameVersion: string;
+	loader: string;
 }

@@ -11,7 +11,7 @@ import { default as runCurseModule, module as parseCurseModule, Args as parseCur
 import { log, LogType } from './util/log.js'
 
 let command: Commands = Commands.NONE
-let commandArgs: parseModlistArgs = { path: '' }
+let commandArgs: parseModlistArgs = { path: '', loader: '', gameVersion: '' }
 
 export function setCommand(_command: Commands) {
 	command = _command

@@ -1,5 +1,5 @@
 import chalk from 'chalk'
-import { argv } from '..'
+import { argv } from '../index.js';
 
 export enum LogType {
 	INFO,
